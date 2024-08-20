@@ -133,3 +133,10 @@ module products 'app/products.bicep' = {
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = containerApps.outputs.registryLoginServer
 output AZURE_CONTAINER_REGISTRY_NAME string = containerApps.outputs.registryName
 output ACA_ENVIRONMENT_NAME string = containerApps.outputs.environmentName
+
+output APP_STORE_URI string = store.outputs.SERVICE_STORE_URI
+output APP_STORE_NAME string = store.outputs.SERVICE_STORE_NAME
+output APP_INVENTORY_URI string = inventory.outputs.SERVICE_INVENTORY_URI
+output APP_INVENTORY_NAME string = inventory.outputs.SERVICE_INVENTORY_NAME
+output APP_PRODUCTS_URI string = products.outputs.SERVICE_PRODUCTS_URI
+output APP_PRODUCTS_NAME string = products.outputs.SERVICE_PRODUCTS_NAME
