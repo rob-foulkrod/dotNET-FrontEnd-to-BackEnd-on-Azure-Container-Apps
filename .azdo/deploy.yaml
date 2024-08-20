@@ -1,0 +1,92 @@
+trigger: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  resourceGroup: dev1
+
+steps:
+
+  - task: AzureResourceManagerTemplateDeployment@3
+    name: provisionStep
+    inputs:
+      deploymentScope: 'Subscription'
+      azureResourceManagerConnection: 'rt-subscription'
+      subscriptionId: '96d0d57a-566f-4b73-bc46-345620f9a3e7'
+      location: 'East US 2'
+      templateLocation: 'Linked artifact'
+      csmFile: './infra/main.bicep'
+      overrideParameters: '-environmentName $(resourceGroup) -location eastus2'
+      deploymentMode: 'Incremental'
+      deploymentOutputs: 'appProvision'
+      useWithoutJSON: true
+
+  - task: AzureCLI@2
+    displayName: Login to DEV ACR
+    name: setvar
+    inputs:
+      azureSubscription: rt-subscription
+      scriptType: pscore
+      addSpnToEnvironment: true
+      scriptLocation: inlineScript
+      inlineScript: |
+        az acr login --name $(appProvision.azurE_CONTAINER_REGISTRY_NAME.value)
+
+        # store service principal id and key for later use
+        echo "##vso[task.setvariable variable=SpId;isoutput=true; issecret=true]$env:servicePrincipalId"
+        echo "##vso[task.setvariable variable=SpKey;isoutput=true; issecret=true]$env:servicePrincipalKey"
+
+  - task: AzureCLI@2
+    displayName: Build and Push Store
+    inputs:
+      azureSubscription: rt-subscription
+      scriptType: pscore
+      scriptLocation: inlineScript
+      inlineScript: |
+        docker build -t $(appProvision.azurE_CONTAINER_REGISTRY_ENDPOINT.value)/$(appProvision.apP_STORE_NAME.value):$(Build.BuildId) ./src -f ./src/Store/Dockerfile
+        docker push $(appProvision.azurE_CONTAINER_REGISTRY_ENDPOINT.value)/$(appProvision.apP_STORE_NAME.value):$(Build.BuildId)
+
+  - task: AzureCLI@2
+    displayName: Build and Push Products
+    inputs:
+      azureSubscription: rt-subscription
+      scriptType: pscore
+      scriptLocation: inlineScript
+      inlineScript: |
+        docker build -t $(appProvision.azurE_CONTAINER_REGISTRY_ENDPOINT.value)/$(appProvision.apP_PRODUCTS_NAME.value):$(Build.BuildId) ./src -f ./src/Store.ProductApi/Dockerfile
+        docker push $(appProvision.azurE_CONTAINER_REGISTRY_ENDPOINT.value)/$(appProvision.apP_PRODUCTS_NAME.value):$(Build.BuildId)
+
+  - task: AzureCLI@2
+    displayName: Build and Push Inventory
+    inputs:
+      azureSubscription: rt-subscription
+      scriptType: pscore
+      scriptLocation: inlineScript
+      inlineScript: |
+        docker build -t $(appProvision.azurE_CONTAINER_REGISTRY_ENDPOINT.value)/$(appProvision.apP_INVENTORY_NAME.value):$(Build.BuildId) ./src -f ./src/Store.InventoryApi/Dockerfile
+        docker push $(appProvision.azurE_CONTAINER_REGISTRY_ENDPOINT.value)/$(appProvision.apP_INVENTORY_NAME.value):$(Build.BuildId)
+
+  - task: AzureContainerApps@1
+    displayName: Build and deploy Store Container App
+    inputs:
+      connectedServiceNameARM: 'rt-subscription'
+      imageToDeploy:  $(appProvision.azurE_CONTAINER_REGISTRY_ENDPOINT.value)/$(appProvision.apP_STORE_NAME.value):$(Build.BuildId)
+      containerAppName: store
+      resourceGroup: $(resourceGroup)
+
+  - task: AzureContainerApps@1
+    displayName: Build and deploy Products Container App
+    inputs:
+      connectedServiceNameARM: 'rt-subscription'
+      imageToDeploy: $(appProvision.azurE_CONTAINER_REGISTRY_ENDPOINT.value)/$(appProvision.apP_PRODUCTS_NAME.value):$(Build.BuildId)
+      containerAppName: products
+      resourceGroup: $(resourceGroup)
+
+  - task: AzureContainerApps@1
+    displayName: Build and deploy Inventory Container App
+    inputs:
+      connectedServiceNameARM: 'rt-subscription'
+      imageToDeploy:  $(appProvision.azurE_CONTAINER_REGISTRY_ENDPOINT.value)/$(appProvision.apP_INVENTORY_NAME.value):$(Build.BuildId)
+      containerAppName: inventory
+      resourceGroup: $(resourceGroup)
